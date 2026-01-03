@@ -1,48 +1,71 @@
 # server.py
 import socket
+from typing import Tuple
 
-# --- Configuration Parameters ---
-HOST = '127.0.0.1'  # Standard loopback interface address
-PORT = 8888         # Listening port
+HOST = "127.0.0.1"
+PORT = 8888
+BACKLOG = 5       # pending connection queue size
+TIMEOUT = 10      # seconds
 
-print(f"Server initializing on {HOST}:{PORT}...")
 
-# Initialize TCP socket (AF_INET for IPv4, SOCK_STREAM for TCP)
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    # Bind socket to the configured address and port
-    s.bind((HOST, PORT))
-    
-    # Configure socket to accept incoming connections (queue size 1)
-    s.listen(1) 
+def handle_client(conn: socket.socket, addr: Tuple[str, int]) -> None:
+    """Receive a message from a client and send acknowledgement back."""
+    print(f"\n[+] Client connected: {addr}")
 
-    # Primary loop for connection acceptance
-    while True:
-        # Blocking call: wait until a client connects. Returns new connection socket and client address.
-        conn, addr = s.accept()
-        
-        print(f"\n--- Connection Accepted ---")
-        print(f"Client Address: {addr}")
-        
-        # Handle the client connection
-        with conn:
-            # Receive data payload (max 1024 bytes)
-            data_bytes = conn.recv(1024) 
-            
-            # Decode received bytes to UTF-8 string
-            client_message = data_bytes.decode('utf-8')
-            print(f"Received data: '{client_message.strip()}'")
+    try:
+        data = conn.recv(1024)
 
-            # Construct response payload
-            response_message = f"SERVER ACK: Message received. Data length: {len(client_message.strip())} bytes."
-            
-            # Encode response string back to bytes for network transmission
-            response_bytes = response_message.encode('utf-8')
-            
-            # Transmit response payload to the client
-            conn.sendall(response_bytes)
-            
-        print("Connection terminated.")
-        # MVP requirement: Exit after single client service
-        break 
+        if not data:
+            print("[-] No data received. Closing connection.")
+            return
 
-print("Server process exiting.")
+        try:
+            message = data.decode("utf-8")
+        except UnicodeDecodeError:
+            message = "<non-utf8 data>"
+            print("⚠ Could not decode data as UTF-8.")
+
+        print(f"[>] Message received: {message.strip()}")
+
+        response = f"SERVER ACK: Message received. Data length: {len(message.strip())} bytes."
+        conn.sendall(response.encode("utf-8"))
+
+        print("[<] Response sent. Closing connection.")
+
+    except socket.timeout:
+        print("⚠ Connection timed out while waiting for data.")
+    except OSError as e:
+        print(f"⚠ Socket error: {e}")
+    finally:
+        conn.close()
+
+
+def start_server(host: str = HOST, port: int = PORT) -> None:
+    """Starts a TCP server that accepts and handles client connections."""
+
+    print(f"🚀 Starting TCP server on {host}:{port}")
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((host, port))
+        server.listen(BACKLOG)
+        server.settimeout(None)
+
+        print("🟢 Server is running. Waiting for connections... (Ctrl + C to stop)")
+
+        try:
+            while True:
+                conn, addr = server.accept()
+                conn.settimeout(TIMEOUT)
+                handle_client(conn, addr)
+
+        except KeyboardInterrupt:
+            print("\n🛑 Server shutdown requested. Exiting...")
+        except OSError as e:
+            print(f"⚠ Server socket error: {e}")
+
+    print("👋 Server stopped.")
+
+
+if __name__ == "__main__":
+    start_server()

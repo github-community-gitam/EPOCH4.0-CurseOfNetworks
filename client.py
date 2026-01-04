@@ -1,38 +1,52 @@
 # client.py
 import socket
+import sys
+from typing import Optional
 
-# --- Configuration Parameters ---
-HOST = '127.0.0.1' 
-PORT = 8888       
+HOST = "127.0.0.1"
+PORT = 8888
+TIMEOUT = 5  # seconds
 
-# Initialize TCP socket (AF_INET for IPv4, SOCK_STREAM for TCP)
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-    print(f"Attempting connection to {HOST}:{PORT}...")
-    
+
+def send_message(message: str, host: str = HOST, port: int = PORT) -> Optional[str]:
+    """Connects to a TCP server, sends a message, and returns the response."""
     try:
-        # Establish connection to the remote server host and port
-        s.connect((HOST, PORT))
-        print("Connection established.")
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(TIMEOUT)
 
-        # Define data payload
-        message_to_send = "Hello, Server! I am learning about TCP sockets."
-        
-        # Encode string to bytes for network transmission
-        data_to_send = message_to_send.encode('utf-8')
+            print(f"Connecting to {host}:{port} ...")
+            sock.connect((host, port))
+            print("Connection established.")
 
-        # Send all data to the server
-        s.sendall(data_to_send)
-        print(f"Transmitted: '{message_to_send}'")
+            sock.sendall(message.encode("utf-8"))
+            print(f"Sent → {message}")
 
-        # Receive server response (max 1024 bytes)
-        server_response_bytes = s.recv(1024) 
+            response = sock.recv(1024).decode("utf-8")
+            print(f"Received ← {response}")
 
-        # Decode received bytes to UTF-8 string
-        server_response = server_response_bytes.decode('utf-8')
-        print(f"\nReceived from Server: '{server_response}'")
-        
+            return response
+
+    except socket.timeout:
+        print("ERROR: Connection attempt timed out.")
     except ConnectionRefusedError:
-        # Handle connection failure if server is not listening
-        print("\nERROR: Connection refused. Verify the server is running on the specified host and port.")
-        
-print("Client process exiting.")
+        print("ERROR: Connection refused — is the server running?")
+    except OSError as e:
+        print(f"Socket error: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+
+    return None
+
+
+if __name__ == "__main__":
+    message = "Hello, Server! I am learning about TCP sockets."
+
+    # Optional: allow host/port overrides from command-line
+    if len(sys.argv) >= 2:
+        HOST = sys.argv[1]
+    if len(sys.argv) >= 3:
+        PORT = int(sys.argv[2])
+
+    send_message(message, HOST, PORT)
+
+    print("Client terminated.")
